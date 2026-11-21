@@ -88,9 +88,39 @@ jobs:
       - name: 拉取 Dart 依赖
         run: flutter pub get
 
+      # 静态检查只为快速拿到错误位置：即使有 error 也继续往下走，
+      # 但会把错误行以 ::error:: 形式打出来，便于通过接口直接读取。
+      - name: 静态检查
+        run: |
+          set -o pipefail
+          flutter analyze --no-fatal-infos --no-fatal-warnings 2>&1 | tee /tmp/analyze.log || true
+          echo "===== 静态检查错误行 ====="
+          grep -E "error" /tmp/analyze.log | head -10 | sed 's/^ */::error::/' || true
+          {
+            echo "### 静态检查"
+            echo '```'
+            tail -40 /tmp/analyze.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: 编译（不签名）
         timeout-minutes: 25
-        run: flutter build ios --release --no-codesign
+        run: |
+          set -o pipefail
+          flutter build ios --release --no-codesign 2>&1 | tee /tmp/build.log
+
+      - name: 回传编译错误
+        if: failure()
+        run: |
+          echo "===== 编译日志尾部 ====="
+          tail -40 /tmp/build.log || true
+          grep -i -E "error|exception|failed|undefined|cannot|no such" /tmp/build.log | tail -8 | sed 's/^ */::error::/' || true
+          {
+            echo "### 编译失败日志尾部"
+            echo '```'
+            tail -60 /tmp/build.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: 打包未签名 IPA
         run: |

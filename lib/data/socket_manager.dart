@@ -65,18 +65,22 @@ class RealtimeSocket {
     final resolved = _resolve(serverUrl);
     if (resolved == null) return;
 
-    final socket = io.io(
-      resolved.origin,
-      io.OptionBuilder()
-          .setPath(resolved.path)
-          .setTransports(['websocket'])
-          .enableForceNew()
-          .enableReconnection()
-          .setReconnectionDelay(2000)
-          .setReconnectionDelayMax(10000)
-          .setAuth({'token': token, 'accountId': cleanAccount.isEmpty ? 'all' : cleanAccount})
-          .build(),
-    );
+    // 注意：只依赖 OptionBuilder 里最稳定的 setPath / setTransports，
+    // 其余选项直接写进配置表，避免不同版本的 socket_io_client 方法名差异导致编译失败
+    final opts = io.OptionBuilder()
+        .setPath(resolved.path)
+        .setTransports(['websocket'])
+        .build();
+    opts['forceNew'] = true;
+    opts['reconnection'] = true;
+    opts['reconnectionDelay'] = 2000;
+    opts['reconnectionDelayMax'] = 10000;
+    opts['auth'] = {
+      'token': token,
+      'accountId': cleanAccount.isEmpty ? 'all' : cleanAccount,
+    };
+
+    final socket = io.io(resolved.origin, opts);
 
     socket.onConnect((_) {
       connected = true;
