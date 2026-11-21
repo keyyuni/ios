@@ -80,15 +80,18 @@ class LoginResult {
   });
 
   factory LoginResult.parse(dynamic raw) {
-    final m = asMap(raw);
+    var m = asMap(raw);
+    // 服务端把结果包在 data 里：{ok:true, data:{token, user:{username}, ...}}
+    if (m['data'] is Map) m = asMap(m['data']);
+    final user = m['user'] is Map ? asMap(m['user']) : const <String, dynamic>{};
     final token = strOr(m['token'], '');
-    final okFlag = m.containsKey('ok') ? boolOr(m['ok'], false) : token.isNotEmpty;
+    final okFlag = raw is Map && raw.containsKey('ok') ? boolOr(raw['ok'], false) : token.isNotEmpty;
     return LoginResult(
       ok: okFlag && token.isNotEmpty,
       token: token,
-      username: strOr(m['username'], ''),
+      username: strOr(m['username'], strOr(user['username'], '')),
       mustChangePassword: boolOr(m['mustChangePassword'], false),
-      error: strOr(m['error'], '') ,
+      error: strOr(m['error'], ''),
       errorType: strOr(m['errorType'], ''),
       remainingMs: intOr(m['remainingMs'], 0),
     );

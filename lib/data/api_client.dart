@@ -201,8 +201,12 @@ class FarmApiClient {
       if (decoded is String && _looksLikeHtml(decoded)) {
         throw ApiException(_htmlMessage(decoded, code), httpCode: code);
       }
+      // 服务端也可能用 200 + {"ok":false} 表达业务失败
+      if (decoded is Map && decoded['ok'] == false) {
+        throw ApiException(_errorMessage(decoded, code), httpCode: code);
+      }
       // 202 = 部分成功，照样把内容交给调用方
-      return decoded;
+      return unwrapPayload(decoded);
     }
     if (code == 401 || code == 403) {
       onUnauthorized?.call();
@@ -213,8 +217,21 @@ class FarmApiClient {
     throw ApiException(_errorMessage(decoded, code), httpCode: code);
   }
 
-  static final _preRe = RegExp(r'<pre>(.*?)</pre>', dotAll: true, caseSensitive: false);
-  static final _titleRe = RegExp(r'<title>([^<]*)</title>', caseSensitive: false);
+  /// 服务端统一返回 `{ok:true, data:{...}}`，业务字段都在 `data` 里。
+  /// 安卓原版在每个调用处各自 `optJSONObject("data")`，这里在出口统一解一次。
+  /// 不带 data 的接口（如 /api/game-version）原样返回。
+  static dynamic unwrapPayload(dynamic decoded) {
+    if (decoded is Map) {
+      final ok = decoded['ok'];
+      if (decoded.containsKey('data') && ok != false) {
+        final inner = decoded['data'];
+        if (inner is Map || inner is List) return inner;
+      }
+    }
+    return decoded;
+  }
+
+  static final _preRe = RegExp(r'<pre>(.*?)</pre>', dotAll: true, caseSensitive: false);  static final _titleRe = RegExp(r'<title>([^<]*)</title>', caseSensitive: false);
   static final _tagRe = RegExp(r'<[^>]+>');
 
   bool _looksLikeHtml(String text) {
@@ -340,7 +357,11 @@ class FarmApiClient {
     final url = normalizeBaseUrl(rawUrl);
     if (url == null) return false;
     try {
-      await _get('/api/auth/validate', overrideUrl: url, overrideToken: token);
+      final data = await _get('/api/auth/validate', overrideUrl: url, overrideToken: token);
+      // 有的版本用 200 + {valid:false} 表达失效，不能只看有没有报错
+      if (data is Map && data.containsKey('valid')) {
+        return boolOr(data['valid'], true);
+      }
       return true;
     } on ApiException catch (e) {
       if (e.httpCode == 401 || e.httpCode == 403) return false;
