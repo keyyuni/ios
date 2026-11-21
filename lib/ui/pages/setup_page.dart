@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../core/theme.dart';
-import '../data/api_client.dart';
-import '../state/app_controller.dart';
+import '../../core/theme.dart';
+import '../../data/api_client.dart';
+import '../../state/app_controller.dart';
 
 /// 首次连接页：填服务器地址 → 两种授权方式（密码 / Token）。
 /// 对应安卓版 ServerSetupScreen。

@@ -63,7 +63,7 @@ class AppTheme {
 class StatusColors {
   static Color mature(BuildContext c) => const Color(0xFFE0533D);
   static Color growing(BuildContext c) => const Color(0xFF2E7D32);
-  static Color empty(BuildContext c) => c.colorScheme.outline;
+  static Color empty(BuildContext c) => Theme.of(c).colorScheme.outline;
   static Color warn(BuildContext c) => const Color(0xFFD98324);
 }
 

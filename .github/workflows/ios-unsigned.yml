@@ -95,7 +95,7 @@ jobs:
           set -o pipefail
           flutter analyze --no-fatal-infos --no-fatal-warnings 2>&1 | tee /tmp/analyze.log || true
           echo "===== 静态检查错误行 ====="
-          grep -E "error" /tmp/analyze.log | head -10 | sed 's/^ */::error::/' || true
+          grep -E "error" /tmp/analyze.log | head -30 | sed 's/^ */::error::/' || true
           {
             echo "### 静态检查"
             echo '```'
