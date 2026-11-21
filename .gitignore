@@ -1,0 +1,31 @@
+# Flutter / Dart
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+.pub/
+
+# 由 CI 的 flutter create 生成的平台工程，不入库
+ios/
+android/
+macos/
+linux/
+windows/
+web/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# 系统
+.DS_Store
+Thumbs.db
+
+# 构建产物
+*.ipa
+*.apk
+Payload/

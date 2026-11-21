@@ -1,0 +1,28 @@
+name: farm_ios
+description: 农场助手 iOS 客户端（Flutter 重写版，对接自建 qq-farm-bot 服务）
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  # 需要 Flutter 3.27+（用到 Color.withValues 与 surfaceContainer 系列颜色）
+  sdk: ">=3.6.0 <4.0.0"
+  flutter: ">=3.27.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  # HTTP 客户端，对应安卓版的 okhttp
+  dio: ^5.7.0
+  # Socket.IO 实时通道，对应安卓版的 io.socket:socket.io-client
+  socket_io_client: ^2.0.3+1
+  # 本地保存服务器地址 / token，对应安卓版的 DataStore
+  shared_preferences: ^2.3.3
+  # 轻量状态管理
+  provider: ^6.1.2
+
+dev_dependencies:
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true

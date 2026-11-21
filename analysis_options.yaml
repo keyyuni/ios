@@ -1,0 +1,13 @@
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  errors:
+    # 上游服务端字段经常缺省，容错解析里大量使用 dynamic，降级为提示
+    avoid_dynamic_calls: ignore
+  exclude:
+    - build/**
+
+linter:
+  rules:
+    prefer_const_constructors: true
+    prefer_single_quotes: true

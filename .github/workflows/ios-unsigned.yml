@@ -1,0 +1,86 @@
+name: build-ios-ipa
+
+# 触发方式：
+# 1) 推代码到 main 自动构建
+# 2) 在 Actions 页面点 "Run workflow" 手动构建
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    # 关键：iOS 必须在 macOS 上编译，这里借用 GitHub 的 macOS 机器
+    runs-on: macos-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: 显示环境版本
+        run: |
+          flutter --version
+          xcodebuild -version
+
+      # 本仓库只提交 lib/ 与 pubspec，iOS 工程骨架由 flutter create 生成，
+      # 这样不用把上千行的 pbxproj 放进版本库，也避免手写工程文件出错。
+      - name: 生成 iOS 工程骨架
+        run: flutter create --platforms=ios --org io.github.ccpopy --project-name farm_ios .
+
+      - name: 配置 Info.plist
+        run: |
+          set -e
+          PLIST="ios/Runner/Info.plist"
+          PB=/usr/libexec/PlistBuddy
+          $PB -c "Set :CFBundleDisplayName 农场助手" "$PLIST" || $PB -c "Add :CFBundleDisplayName string 农场助手" "$PLIST"
+          $PB -c "Set :CFBundleName 农场助手" "$PLIST" || $PB -c "Add :CFBundleName string 农场助手" "$PLIST"
+          # 允许连接自建服务的 http / ws（局域网常见），并声明局域网用途
+          $PB -c "Delete :NSAppTransportSecurity" "$PLIST" 2>/dev/null || true
+          $PB -c "Add :NSAppTransportSecurity dict" "$PLIST"
+          $PB -c "Add :NSAppTransportSecurity:NSAllowsArbitraryLoads bool true" "$PLIST"
+          $PB -c "Add :NSAppTransportSecurity:NSAllowsLocalNetworking bool true" "$PLIST"
+          $PB -c "Add :NSLocalNetworkUsageDescription string 需要访问局域网内的农场管理服务" "$PLIST"
+          $PB -c "Add :NSBonjourServices array" "$PLIST" || true
+          $PB -c "Add :UIFileSharingEnabled bool true" "$PLIST" || true
+          plutil -p "$PLIST"
+
+      - name: 统一 iOS 部署版本
+        run: |
+          if [ -f ios/Podfile ]; then
+            sed -i '' "s/^# *platform :ios, .*/platform :ios, '13.0'/" ios/Podfile
+            grep -n "platform :ios" ios/Podfile || true
+          fi
+
+      - name: 拉取 Dart 依赖
+        run: flutter pub get
+
+      - name: 编译（不签名）
+        run: flutter build ios --release --no-codesign
+
+      - name: 打包未签名 IPA
+        run: |
+          set -e
+          APP="build/ios/iphoneos/Runner.app"
+          test -d "$APP"
+          rm -rf Payload farm-ios-unsigned.ipa
+          mkdir -p Payload
+          cp -R "$APP" Payload/
+          # ad-hoc 签名：TrollStore 安装时会自行重签，这步是给 ldid / 部分越狱插件用的兜底
+          codesign -f -s - --deep Payload/Runner.app || true
+          zip -qry farm-ios-unsigned.ipa Payload
+          ls -lh farm-ios-unsigned.ipa
+          unzip -l farm-ios-unsigned.ipa | head -20
+
+      - name: 上传 IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: farm-ios-ipa
+          path: farm-ios-unsigned.ipa
+          retention-days: 30
