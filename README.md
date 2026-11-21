@@ -10,16 +10,12 @@
 
 iOS 编译必须有 macOS + Xcode，所以借用 GitHub Actions 的 macOS 机器。
 
-**第 1 步：把本目录推到你的 GitHub 仓库**
+**第 1 步：代码推送到仓库**
+
+代码已在 <https://github.com/keyyuni/ios>，推送即自动触发构建。后续改动只需：
 
 ```bash
-cd farm_ios
-git init
-git add .
-git commit -m "feat: iOS 版初版"
-git branch -M main
-git remote add origin https://github.com/<你的用户名>/farm-ios.git
-git push -u origin main
+git add . && git commit -m "改动说明" && git push
 ```
 
 **第 2 步：等 Actions 跑完**

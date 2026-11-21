@@ -8,26 +8,54 @@ on:
     branches: [main, master]
   workflow_dispatch:
 
+# 同一个分支只保留最新一次构建，避免旧任务堆积占用 macOS 机器
+concurrency:
+  group: ios-build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     # 关键：iOS 必须在 macOS 上编译，这里借用 GitHub 的 macOS 机器
     runs-on: macos-latest
-    timeout-minutes: 45
+    timeout-minutes: 40
 
     steps:
       - name: 拉取代码
         uses: actions/checkout@v4
 
-      - name: 安装 Flutter
+      # 首选方式：官方 action。
+      # 关掉 cache 并加 10 分钟硬超时——一旦卡住立刻失败，交给下一步兜底，
+      # 而不是像无超时那样让整个 job 干等到 40 分钟上限。
+      - name: 安装 Flutter（官方 action）
+        id: flutter_action
+        timeout-minutes: 10
+        continue-on-error: true
         uses: subosito/flutter-action@v2
         with:
           channel: stable
-          cache: true
+          cache: false
 
-      - name: 显示环境版本
+      # 兜底方式：直接从官方仓库浅克隆，走 GitHub 通道，绕开 action 的版本探测与缓存
+      - name: 安装 Flutter（克隆兜底）
+        if: steps.flutter_action.outcome != 'success'
+        timeout-minutes: 15
         run: |
+          set -e
+          echo "::warning::官方 action 未成功，改用 git 克隆方式安装 Flutter"
+          rm -rf "$HOME/flutter"
+          git clone --depth 1 --branch stable https://github.com/flutter/flutter.git "$HOME/flutter"
+          echo "$HOME/flutter/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/flutter/bin:$PATH"
           flutter --version
+
+      - name: 环境自检
+        run: |
+          which flutter
+          flutter --version
+          sw_vers
+          uname -m
           xcodebuild -version
+          df -h /
 
       # 本仓库只提交 lib/ 与 pubspec，iOS 工程骨架由 flutter create 生成，
       # 这样不用把上千行的 pbxproj 放进版本库，也避免手写工程文件出错。
@@ -47,7 +75,6 @@ jobs:
           $PB -c "Add :NSAppTransportSecurity:NSAllowsArbitraryLoads bool true" "$PLIST"
           $PB -c "Add :NSAppTransportSecurity:NSAllowsLocalNetworking bool true" "$PLIST"
           $PB -c "Add :NSLocalNetworkUsageDescription string 需要访问局域网内的农场管理服务" "$PLIST"
-          $PB -c "Add :NSBonjourServices array" "$PLIST" || true
           $PB -c "Add :UIFileSharingEnabled bool true" "$PLIST" || true
           plutil -p "$PLIST"
 
@@ -62,6 +89,7 @@ jobs:
         run: flutter pub get
 
       - name: 编译（不签名）
+        timeout-minutes: 25
         run: flutter build ios --release --no-codesign
 
       - name: 打包未签名 IPA
