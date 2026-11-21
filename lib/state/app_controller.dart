@@ -95,7 +95,9 @@ class AppController extends ChangeNotifier {
 
   Future<void> bootstrap() async {
     final prefs = await SharedPreferences.getInstance();
-    serverUrl = prefs.getString('serverUrl') ?? '';
+    // 旧版本可能把 /login 这类页面路径一起存了进来，读取时顺手洗一遍
+    final savedUrl = prefs.getString('serverUrl') ?? '';
+    serverUrl = FarmApiClient.normalizeBaseUrl(savedUrl) ?? savedUrl;
     token = prefs.getString('token') ?? '';
     username = prefs.getString('username') ?? '';
     accountId = prefs.getString('accountId') ?? '';

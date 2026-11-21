@@ -57,20 +57,75 @@ class FarmApiClient {
     ));
   }
 
-  /// 规范化服务器地址：补协议、去尾部斜杠。返回 null 表示地址不合法。
+  /// 浏览器地址栏里常见的「页面路径」。接口本身挂在站点根路径上，
+  /// 用户从浏览器复制地址时很容易连 /login 一起带进来，必须剥掉，
+  /// 否则会拼成 /login/api/login 这种不存在的地址。
+  static const _pagePathSuffixes = [
+    '/login',
+    '/signin',
+    '/sign-in',
+    '/index.html',
+    '/index.htm',
+    '/index.php',
+  ];
+
+  /// 局域网 / 本机地址：这类服务多数没有 HTTPS，猜错了会绕远路。
+  static bool isLocalAddress(String host) {
+    final h = host.toLowerCase();
+    if (h == 'localhost' || h.endsWith('.local') || h.endsWith('.lan')) return true;
+    final parts = h.split('.');
+    if (parts.length != 4) return false;
+    final a = int.tryParse(parts[0]);
+    final b = int.tryParse(parts[1]);
+    if (a == null || b == null) return false;
+    if (a == 10 || a == 127) return true;
+    if (a == 192 && b == 168) return true;
+    if (a == 172 && b >= 16 && b <= 31) return true;
+    return false;
+  }
+
+  /// 规范化服务器地址：补协议、去尾部斜杠、剥掉 /login 之类的页面路径。
+  /// 返回 null 表示地址不合法。
   static String? normalizeBaseUrl(String? input) {
     var s = (input ?? '').trim();
     if (s.isEmpty) return null;
+
     if (!s.startsWith('http://') && !s.startsWith('https://')) {
-      s = 'https://$s';
+      // 没写协议：局域网用 http，公网用 https
+      final head = s.split('/').first;
+      final colon = head.indexOf(':');
+      final hostGuess = colon >= 0 ? head.substring(0, colon) : head;
+      s = '${isLocalAddress(hostGuess) ? 'http' : 'https'}://$s';
     }
+
     final uri = Uri.tryParse(s);
     if (uri == null || uri.host.isEmpty) return null;
-    var out = s;
-    while (out.endsWith('/')) {
-      out = out.substring(0, out.length - 1);
+
+    var path = uri.path;
+    // 反复剥离：兼容 /farm/login/ 这类子路径部署
+    var changed = true;
+    while (changed) {
+      changed = false;
+      while (path.endsWith('/')) {
+        path = path.substring(0, path.length - 1);
+        changed = true;
+      }
+      final lower = path.toLowerCase();
+      for (final suffix in _pagePathSuffixes) {
+        if (lower.endsWith(suffix)) {
+          path = path.substring(0, path.length - suffix.length);
+          changed = true;
+          break;
+        }
+      }
     }
-    return out;
+
+    final buf = StringBuffer('${uri.scheme}://');
+    if (uri.userInfo.isNotEmpty) buf.write('${uri.userInfo}@');
+    buf.write(uri.host);
+    if (uri.hasPort) buf.write(':${uri.port}');
+    buf.write(path);
+    return buf.toString();
   }
 
   void setSession({required String serverUrl, required String token, required String accountId}) {
@@ -141,13 +196,53 @@ class FarmApiClient {
     }
 
     if (code >= 200 && code < 300) {
+      // 有些部署会把未知路由兜底成前端页面（200 + HTML），
+      // 如果不拦下来，「测试连接」会误报成功、登录却报一堆 HTML。
+      if (decoded is String && _looksLikeHtml(decoded)) {
+        throw ApiException(_htmlMessage(decoded, code), httpCode: code);
+      }
       // 202 = 部分成功，照样把内容交给调用方
       return decoded;
     }
     if (code == 401 || code == 403) {
       onUnauthorized?.call();
     }
+    if (decoded is String && _looksLikeHtml(decoded)) {
+      throw ApiException(_htmlMessage(decoded, code), httpCode: code);
+    }
     throw ApiException(_errorMessage(decoded, code), httpCode: code);
+  }
+
+  static final _preRe = RegExp(r'<pre>(.*?)</pre>', dotAll: true, caseSensitive: false);
+  static final _titleRe = RegExp(r'<title>([^<]*)</title>', caseSensitive: false);
+  static final _tagRe = RegExp(r'<[^>]+>');
+
+  bool _looksLikeHtml(String text) {
+    final t = text.trimLeft().toLowerCase();
+    return t.startsWith('<!doctype') || t.startsWith('<html');
+  }
+
+  /// 把服务端吐出的 HTML 错误页翻译成人话，别让用户对着一堆标签猜。
+  String _htmlMessage(String text, int code) {
+    var detail = _preRe.firstMatch(text)?.group(1) ?? '';
+    if (detail.trim().isEmpty) {
+      detail = _titleRe.firstMatch(text)?.group(1) ?? '';
+    }
+    detail = detail.replaceAll(_tagRe, ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+
+    // Cannot POST /login/api/login —— 直接从报错里解析出被多拼上去的前缀
+    final bad = RegExp(r'Cannot (?:POST|GET|PUT|DELETE) (\S+)').firstMatch(detail);
+    final badPath = bad?.group(1) ?? '';
+
+    final buf = StringBuffer('服务器返回的是网页，不是接口数据（HTTP $code）。');
+    if (badPath.isNotEmpty) {
+      buf.write('\n服务端说这个地址不存在：$badPath');
+      buf.write('\n说明服务器地址多带了路径，请只填到端口号，像这样：http://192.168.1.10:3007');
+    } else {
+      buf.write('\n通常是把浏览器里的页面地址（如 /login）填进来了，请只填到端口号。');
+    }
+    if (detail.isNotEmpty) buf.write('\n服务端原文：$detail');
+    return buf.toString();
   }
 
   dynamic _decode(String text) {

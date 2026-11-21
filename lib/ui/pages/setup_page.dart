@@ -25,6 +25,7 @@ class _SetupPageState extends State<SetupPage> {
   bool _busy = false;
   String? _error;
   String? _okText;
+  String? _urlNote;
 
   @override
   void dispose() {
@@ -35,11 +36,27 @@ class _SetupPageState extends State<SetupPage> {
     super.dispose();
   }
 
+  /// 用户常把浏览器地址栏整条复制进来（带 /login），这里自动剥掉并把结果回填，
+  /// 让他一眼看到实际用的是哪个地址，而不是背地里悄悄改。
+  void _syncUrl() {
+    final before = _urlCtrl.text.trim();
+    if (before.isEmpty) return;
+    final fixed = FarmApiClient.normalizeBaseUrl(before);
+    if (fixed == null || fixed == before) return;
+    _urlCtrl.value = TextEditingValue(
+      text: fixed,
+      selection: TextSelection.collapsed(offset: fixed.length),
+    );
+    _urlNote = '地址已自动修正为 $fixed —— 接口挂在根路径，/login 这类页面路径会被去掉。';
+  }
+
   Future<void> _test() async {
     setState(() {
       _busy = true;
       _error = null;
       _okText = null;
+      _urlNote = null;
+      _syncUrl();
     });
     final controller = context.read<AppController>();
     try {
@@ -60,6 +77,8 @@ class _SetupPageState extends State<SetupPage> {
       _busy = true;
       _error = null;
       _okText = null;
+      _urlNote = null;
+      _syncUrl();
     });
     final controller = context.read<AppController>();
     final err = _useToken
@@ -106,7 +125,8 @@ class _SetupPageState extends State<SetupPage> {
               autocorrect: false,
               decoration: const InputDecoration(
                 labelText: '服务器地址',
-                hintText: 'https://farm.example.com',
+                hintText: 'http://192.168.1.10:3007',
+                helperText: '只填到端口号，不要带 /login 等页面路径',
                 prefixIcon: Icon(Icons.dns_outlined),
               ),
             ),
@@ -163,6 +183,10 @@ class _SetupPageState extends State<SetupPage> {
                 ),
               ),
 
+            if (_urlNote != null) ...[
+              Gap.h16,
+              _Banner(text: _urlNote!, isError: false, icon: Icons.auto_fix_high),
+            ],
             if (_error != null) ...[
               Gap.h16,
               _Banner(text: _error!, isError: true),
@@ -196,10 +220,11 @@ class _SetupPageState extends State<SetupPage> {
 }
 
 class _Banner extends StatelessWidget {
-  const _Banner({required this.text, required this.isError});
+  const _Banner({required this.text, required this.isError, this.icon});
 
   final String text;
   final bool isError;
+  final IconData? icon;
 
   @override
   Widget build(BuildContext context) {
@@ -212,7 +237,7 @@ class _Banner extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(isError ? Icons.error_outline : Icons.check_circle_outline, size: 18, color: fg),
+          Icon(icon ?? (isError ? Icons.error_outline : Icons.check_circle_outline), size: 18, color: fg),
           const SizedBox(width: 8),
           Expanded(
             child: Text(text, style: TextStyle(fontSize: 13, color: fg, height: 1.4)),
